@@ -1,0 +1,15 @@
+pandas
+requests
+omnipath
+chembl-webresource-client
+pandasgwas
+pyarrow
+xmltodict
+stringdb
+numpy
+networkx
+scikit-learn
+fastapi
+uvicorn
+streamlit
+psycopg[binary]

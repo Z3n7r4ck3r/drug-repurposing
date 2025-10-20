@@ -1,0 +1,443 @@
+﻿Qui sotto trovi un development plan completo per costruire (e riprodurre) una piattaforma di drug repurposing utilizzabile per tutte le patologie oculari (e generalizzabile oltre), basata solo su dati e tool pubblici. È scritto in modo “LLM-eseguibile” (stile Codex): per ogni fase ci sono goal → input/output → LLM-TASK (azioni concrete) → acceptance criteria. Ho ancorato ogni blocco alle fonti ufficiali con API/dump pubblici.
+
+
+
+
+
+
+1) Scope & Ontologie (disease-agnostic, focus occhio)
+
+
+Goal
+Unificare i codici malattia/fenotipo e definire il “perimetro oculare”.
+
+
+Input
+MONDO (diseases), DOID (Disease Ontology), HPO (fenotipi oculari). Output: tabelle disease, phenotype, bridge disease_phenotype. 
+
+
+LLM-TASK
+
+
+
+
+Scarica MONDO/DOID/HPO via API/dump; costruisci disease(id_mondo, id_doid, label, synonyms, xrefs) e phenotype(hpo_id, label). Marca i rami oculari (retina, coroide, cornea, nervo ottico, uvea, lacrimale). 
+
+
+
+
+
+
+Acceptance
+Query per “AMD”, “glaucoma”, “uveite”, “occlusione venosa retinica”, “cheratite” restituiranno MONDO/DOID + lista HPO coerente. 
+
+
+
+
+
+
+2) Data Lake + Knowledge Graph (ETL open)
+
+
+Fonti chiave
+
+
+
+
+Reti causali direzionali con segno: OmniPath (interazioni attivazione/inibizione), SIGNOR 3.0 (relazioni causali up/down). 
+
+
+PPI/associazioni: STRING (API + dump; scores). 
+
+
+Pathway/gene sets: Reactome (Content Service/API, download). 
+
+
+Gene-disease / genetica: Open Targets (GraphQL), GWAS Catalog (REST), DisGeNET (accesso parziale free). 
+
+
+Espressione oculare: Human Protein Atlas – Eye/Retina, cell-type (PLAE/scEiaD). 
+
+
+Target-drug/bioattività: ChEMBL (dump SQL), DrugCentral (dump PostgreSQL/TSV), IUPHAR/BPS (REST). 
+
+
+Sicurezza/label/ROA: openFDA FAERS, DailyMed (SPL API/dump), SIDER (download), RxNorm/RxClass (API). 
+
+
+Trial clinici: ClinicalTrials.gov API v2 (modernized). 
+
+
+
+
+
+
+LLM-TASK (ETL)
+
+
+
+
+Definisci schemi minimi (Postgres):
+gene, protein_edge{src,dst,relation,sign(+/−),direct,bool,source}, pathway_member, disease_gene{score,source}, tissue_expr, drug{rxnorm,chembl,gtopid}, drug_target{action,affinity}, safety_ae, label_section, trial.
+
+
+Connettori: OmniPath+SIGNOR (solo causal signed), STRING (PPI fisiche), Reactome (gene sets), OpenTargets/GWAS/DisGeNET, HPA/PLAE, ChEMBL/DrugCentral/IUPHAR, FAERS/DailyMed/SIDER/RxNorm, ClinicalTrials v2. Normalizza ID (HGNC/Ensembl/UniProt; RxNorm/ChEMBL). 
+
+
+
+
+
+
+Acceptance
+
+
+
+
+protein_edge con sign non nullo & direct=true > 200k.
+
+
+drug_target copre la maggioranza dei farmaci approvati (verifica incrociata DrugCentral/IUPHAR). 
+
+
+
+
+
+
+
+
+
+
+3) Disease-module (firme/seeds per QUALSIASI patologia oculare)
+
+
+Goal
+Generare signature up/down e seed set affidabili per ogni malattia (bulk/single-cell, genetica, curated).
+
+
+LLM-TASK
+
+
+
+
+DEG pipeline (limma/DESeq2) su studi GEO pertinenti; meta-analisi random-effects; per cell-type usa PLAE/scEiaD come pesi/filtro retina-specific. 
+
+
+Integra associazioni target-malattia (OpenTargets, DisGeNET) e indizi GWAS. 
+
+
+
+
+
+
+Acceptance
+Per AMD e glaucoma emergono set coerenti con i pattern tissutali retina/HPA. 
+
+
+
+
+
+
+4) Motore Target-scoring (replica open dei metodi su rete)
+
+
+Goal
+Calcolare feature di rete direzionale e firmata: Propagation, Random Walk w/ Restart, Interconnectivity/Shortest Paths firmati, + Pathway Enrichment e Disease-similarity.
+
+
+LLM-TASK
+
+
+
+
+Propagation su grafo OmniPath+SIGNOR con seed = {UP=+1, DOWN=−1}, α≈0.75; normalizzazione per grado; stop a ||fₖ₊₁−fₖ||∞<1e−6. 
+
+
+RWR baseline (restart 0.7–0.8).
+
+
+Distanze “signed, directional” da target → (UP/DOWN); punteggi locali di interconnectivity.
+
+
+Enrichment Reactome e somma punteggi gene-level. 
+
+
+
+
+
+
+Output
+target_score{gene, disease_id, features…, S_t∈[0,1]} con spiegabilità (quali seed e quali edge contano).
+
+
+
+
+
+
+5) Mapping target → farmaci + direzione d’effetto
+
+
+Goal
+Tradurre S_t in ranking farmaci coerenti con MoA e segno (inibitore su gene pro-malattia ⇒ favorevole, agonista su anti-malattia ⇒ favorevole).
+
+
+LLM-TASK
+
+
+
+
+Popola drug_target(action, affinity pChEMBL) da ChEMBL/DrugCentral/IUPHAR.
+
+
+Calcola R_d = aggregato (max/top-k mean) dei S_t colpiti dal farmaco, pesato per selectivity/affinità e coerenza del segno. 
+
+
+
+
+
+
+Acceptance
+Per AMD, gli anti-VEGF risultano top quando presenti i rispettivi target (VEGFA/KDR/FLT1). (Sanity check clinico).
+
+
+
+
+
+
+6) Developability (proxy pubblici)
+
+
+Goal
+Applicare filtri pratici (sicurezza, label, vie di somministrazione, attività clinica) usando solo fonti pubbliche.
+
+
+LLM-TASK
+
+
+
+
+ADR & safety: openFDA/FAERS → disproporzionalità grezza per PT “Eye disorders”. 
+
+
+Label text: DailyMed SPL API/dump → NER su sezioni “Adverse Reactions”, “Warnings”, “Dosage and Administration”. 
+
+
+Side effects strutturati: SIDER (download) per mapping rapido. 
+
+
+Formulazioni/ROA: RxNorm/RxClass per topica/intravitreale/sistemica. 
+
+
+Evidenza clinica: ClinicalTrials.gov v2 (conteggio/phase/status per patologia/farmaco). 
+
+
+Calcola D_d∈[0,1] combinando safety (penalità), ROA (bonus), label (warning), trials (maturità).
+
+
+
+
+
+
+Output
+developability{drug_id, D_d, flags[]} + motivazioni.
+
+
+
+
+
+
+7) Signature-reversal (complementare)
+
+
+Goal
+Verificare che il farmaco inverta la firma trascrizionale della malattia.
+
+
+Fonti
+LINCS L1000 (GEO GSE92742; LDP3/iLINCS API), DSigDB (gene-sets drug). 
+
+
+LLM-TASK
+
+
+
+
+Normalizza UP/DOWN della malattia → query iLINCS/LDP3; calcola score tipo connectivity/tau (negativo = bene).
+
+
+In alternativa/offline, usa DSigDB + enrichment. 
+
+
+
+
+
+
+Output
+signature_score{drug_id, disease_id, tau_like}.
+
+
+
+
+
+
+8) Integrazione finale & validazione
+
+
+LLM-TASK
+
+
+
+
+Ranking finale F_d = w1·R_d + w2·D_d + w3·tau (pesi configurabili per scenario preclinico/clinico).
+
+
+Backtest su 4–5 malattie oculari (AMD, glaucoma, uveite, occlusione venosa retinica, cheratite): precision@K vs standard care / indicazioni note (da label/trials). 
+
+
+
+
+
+
+Acceptance
+Top-K recupera classi note (anti-VEGF per AMD, beta-bloccanti/prostaglandine per glaucoma, corticosteroidi/anti-TNF per uveiti) e giustifica ogni candidato con evidence card (rete, target, label, trials).
+
+
+
+
+
+
+9) API & UI per il laboratorio
+
+
+API (FastAPI)
+/diseases/search, /targets, /drugs, /evidence/{drug|disease}, /signatures/score.
+UI (Streamlit): scheda farmaco con: network mini-graph, target colpiti, reversal score, safety/label, ROA, trials, explainability con link alla fonte (OpenTargets, Reactome, DailyMed, FAERS, LDP3). 
+
+
+Acceptance
+Dato “retinite pigmentosa”, ritorna lista ordinata + schede con link API attivi.
+
+
+
+
+
+
+10) Dove usare LLM (open-source) in modo sicuro
+
+
+
+
+ETL semantico label: estrazione ADR oculari/ROA da DailyMed (SPL XML → JSON strutturato), con guard-rails (regex/ontologie RxNorm/HPO). 
+
+
+Evidence cards: sintesi letteratura mirata (puoi aggiungere EuropePMC/PubMed in un secondo step).
+
+
+Data cleaning: sinonimi farmaco/target (RxNorm ⇄ ChEMBL ⇄ IUPHAR). 
+
+
+Code-assist: generazione test, SQL, DAG di orchestrazione (Snakemake/Airflow).
+(No decisioni scientifiche critiche delegate al LLM; sempre validazione automatica).
+
+
+
+
+
+
+
+
+
+
+11) Architettura & repo layout
+
+
+
+
+Data lake: Postgres + file store (GEO/LINCS).
+
+
+Grafo: NetworkX/igraph; opzionale Neo4j per query interattive.
+
+
+Orchestrazione: Snakemake/Airflow.
+
+
+Modeling: scikit-learn/XGBoost; R per DEG.
+
+
+Repro: Docker + DVC; versiona le release (STRING v12, ChEMBL 36, ecc.). 
+
+
+
+
+
+
+/etl/            # omnipath.py, signor.py, string.py, reactome.py, ...
+/graph/          # build_graph.py
+/signatures/     # geo_meta.py, sc_plae_tools.py
+/scoring/        # propagation.py, rwr.py, interconnectivity.py
+/mapping/        # drug_target_map.py (chembl/drugcentral/iuphar)
+/developability/ # faers.py, dailymed_ner.py, rxnorm.py, trials.py
+/model/          # integrate_features.py, train_validate.py
+/api/            # main.py (FastAPI)
+/ui/             # streamlit_app.py
+/tests/          # unit + integration
+/infra/          # docker-compose.yml, airflow_dag.py
+
+
+
+
+
+
+
+
+12) MVP in 6 step (riproducibile)
+
+
+
+
+Build grafo firmato: OmniPath (activation/inhibition, direct) + SIGNOR; aggiungi PPI STRING come livello “fisico”. 
+
+
+Firme malattia: raccogli GEO + seeds OpenTargets/GWAS; normalizza a up/down. 
+
+
+Propagation & RWR → target_score. 
+
+
+Mapping farmaci (ChEMBL/DrugCentral/IUPHAR) + direzione d’effetto → drug_score (R_d). 
+
+
+Developability (FAERS, DailyMed, RxNorm, Trials) → D_d. 
+
+
+Signature-reversal (L1000 / iLINCS / DSigDB) → tau; ranking finale F_d. 
+
+
+
+
+
+
+
+
+
+
+13) QA, governance, licensing (uso interno R&D)
+Versionamento dei dump (date di rilascio nei metadati).
+
+
+Test: integrità grafo, stabilità ranking su bootstrapping, coerenza mapping ID.
+
+
+Licenze: Reactome, STRING, OpenTargets, ChEMBL, IUPHAR, DrugCentral, HPA, openFDA, ClinicalTrials forniscono accesso per ricerca; verifica i termini per redistribuzione (es. DisGeNET ha limiti sul full dump per piano free). 
+
+
+Perché questa piattaforma può “arrivare agli stessi risultati”
+
+
+Usiamo reti causali direzionali con segno (OmniPath, SIGNOR) come alternativa open alle basi proprietarie: sono pensate proprio per modeling causale (attivazione/inibizione). 
+
+
+Replichiamo i metodi su grafo (propagazione, RWR, interconnectivity) + pathway enrichment (Reactome), e chiudiamo il cerchio con mapping target→farmaco e developability da fonti pubbliche/ufficiali. 
+
+
+Aggiungiamo signature-reversal (L1000/iLINCS/DSigDB) per un’ulteriore linea di evidenza indipendente.

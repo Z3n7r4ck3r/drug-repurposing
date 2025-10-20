@@ -1,0 +1,89 @@
+{
+  "disease_gene": {
+    "disease_id": "TEXT",
+    "evidence": "JSONB",
+    "evidence_type": "TEXT",
+    "gene_id": "TEXT",
+    "score": "DOUBLE PRECISION",
+    "source": "TEXT"
+  },
+  "drug": {
+    "approval_status": "TEXT",
+    "drug_id": "TEXT",
+    "inchikey": "TEXT",
+    "preferred_name": "TEXT",
+    "smiles": "TEXT",
+    "source": "TEXT",
+    "synonyms": "TEXT"
+  },
+  "drug_target": {
+    "action": "TEXT",
+    "affinity": "DOUBLE PRECISION",
+    "affinity_unit": "TEXT",
+    "drug_id": "TEXT",
+    "evidence": "JSONB",
+    "moa_category": "TEXT",
+    "source": "TEXT",
+    "target_id": "TEXT",
+    "target_type": "TEXT"
+  },
+  "gene": {
+    "ensembl_id": "TEXT",
+    "gene_id": "TEXT",
+    "species": "TEXT",
+    "symbol": "TEXT",
+    "uniprot_id": "TEXT"
+  },
+  "label_section": {
+    "drug_id": "TEXT",
+    "extracted_at": "TIMESTAMPTZ",
+    "section": "TEXT",
+    "source": "TEXT",
+    "text": "TEXT"
+  },
+  "pathway_member": {
+    "evidence": "TEXT",
+    "gene_id": "TEXT",
+    "pathway_id": "TEXT",
+    "pathway_name": "TEXT",
+    "source": "TEXT"
+  },
+  "protein_edge": {
+    "direct": "BOOLEAN",
+    "dst_gene_id": "TEXT",
+    "edge_id": "BIGSERIAL",
+    "evidence": "TEXT",
+    "relation": "TEXT",
+    "sign": "TEXT",
+    "source": "TEXT",
+    "source_reference": "TEXT",
+    "src_gene_id": "TEXT"
+  },
+  "safety_ae": {
+    "adverse_event": "TEXT",
+    "drug_id": "TEXT",
+    "evidence": "JSONB",
+    "proportional_reporting_ratio": "DOUBLE PRECISION",
+    "report_count": "INTEGER",
+    "source": "TEXT"
+  },
+  "tissue_expr": {
+    "expression": "DOUBLE PRECISION",
+    "gene_id": "TEXT",
+    "record_id": "BIGSERIAL",
+    "source": "TEXT",
+    "tissue": "TEXT",
+    "unit": "TEXT"
+  },
+  "trial": {
+    "conditions": "TEXT",
+    "enrollment": "INTEGER",
+    "interventions": "TEXT",
+    "last_updated": "TIMESTAMPTZ",
+    "nct_id": "TEXT",
+    "phase": "TEXT",
+    "source": "TEXT",
+    "status": "TEXT",
+    "title": "TEXT"
+  }
+}

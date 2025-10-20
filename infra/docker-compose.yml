@@ -1,0 +1,25 @@
+version: "3.9"
+services:
+  postgres:
+    image: postgres:14
+    environment:
+      POSTGRES_DB: rx_repurpose
+      POSTGRES_USER: rx
+      POSTGRES_PASSWORD: rx
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  api:
+    build: ..
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000
+    environment:
+      DATABASE_URL: postgresql://rx:rx@postgres:5432/rx_repurpose
+    depends_on:
+      - postgres
+    ports:
+      - "8000:8000"
+
+volumes:
+  postgres_data:
